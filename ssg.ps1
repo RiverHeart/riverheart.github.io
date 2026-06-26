@@ -184,5 +184,3 @@ function Remove-Post {
         Write-Warning "Could not find the file for the post titled '$Title'."
     }
 }
-
-Build-Site
