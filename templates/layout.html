@@ -1,12 +1,23 @@
-<!DOCTYPE html>
 <html>
     <head>
         <title>{{ title }}</title>
-        <link rel="stylesheet" href="../assets/css/sakura.css" type="text/css">
+        <link rel="stylesheet" href="../assets/css/sakura.css" type="text/css" />
+        <link rel="stylesheet" href="../assets/css/custom.css" type="text/css" />
     </head>
     <body>
         <a href="../index.html">Home</a>
-        <h1>{{ title }}</h1>
-        <div>{{ content }}</div>
+        <header>
+            <h1>{{ title }}</h1>
+        </header>
+
+        <main>
+        <article>
+            <div>{{ content }}</div>
+        </article>
+        </main>
+
+        <footer>
+            <small>Thanks for reading.</small>
+        </footer>
     </body>
 </html>

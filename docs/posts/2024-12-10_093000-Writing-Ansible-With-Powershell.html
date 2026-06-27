@@ -1,0 +1,105 @@
+<html><head><title>Writing Ansible With Powershell</title><link rel="stylesheet" href="../assets/css/sakura.css" type="text/css" /><link rel="stylesheet" href="../assets/css/custom.css" type="text/css" /></head><body><a href="../index.html">Home</a><header><h1>Writing Ansible With Powershell</h1></header><main><article><div><h2 id="overview">Overview</h2><p>Hello fine people of the internet! After banging my head against the proverbial wall I've come to share the wisdom leaking out of my head.</p><p>If you're here I assume you, like me, are a Powershell fanboy not content to meekly run Powershell scripts from YAML. No? Perhaps you recognize Python's clunkiness for sysadmin work, and you WANT learn how to use Powershell in it's raw form to manage Linux machines. Maybe you'd like to use this method to write modules in another language entirely, that's entirely doable. Whatever the reason you're here to learn and learning is great.</p><p>Now sure, there are some <a href="https://docs.ansible.com/ansible/latest/dev_guide/developing_modules_general_windows.html">resources</a> out there detailing the use of Powershell with Ansible but those I've come across focus on Windows and, arguably, hide the simplicity of Ansible's inner workings.</p><h2 id="table-of-contents">Table of Contents</h2><ul><li><a href="#cloud-init">Cloud Init</a></li><li><a href="#powershell-script">Powershell Module</a></li><li><a href="#playbook">Playbook</a></li></ul><h2 id="cloud-init">Cloud Init</h2><p>To start, let's bootstrap Powershell on the server using <a href="https://cloud-init.io/">cloud-init</a> so it's immediately available to us.</p><p>During Azure/AWS/etc VM creation, you provide a yaml file like the one below. In it, we add the Microsoft repo and install Powershell. I'm explicitly providing the public key for the Microsoft repo but you can use a key id instead to query <code>keyserver.ubuntu.com</code>. To find the public key id of a gpg file run <code>gpg --show-keys /path/to/foobar.gpg</code>.</p><p>If your VM doesn't have an Ansible user already you may be interested in <a href="https://cloudinit.readthedocs.io/en/latest/reference/examples.html#configure-instance-to-be-managed-by-ansible">bootstrapping one using cloud-init</a>.</p><p><strong>cloud-init.yml</strong></p><pre><code class="language-yml"><span class="line-number">01</span> ## template: jinja
+<span class="line-number">02</span> #cloud-config
+<span class="line-number">03</span> 
+<span class="line-number">04</span> package_reboot_if_required: true
+<span class="line-number">05</span> package_update: true
+<span class="line-number">06</span> package_upgrade: true
+<span class="line-number">07</span> packages:
+<span class="line-number">08</span>   - apt-transport-https
+<span class="line-number">09</span>   - ca-certificates
+<span class="line-number">10</span>   - wget
+<span class="line-number">11</span>   - software-properties-common
+<span class="line-number">12</span>   - powershell
+<span class="line-number">13</span> 
+<span class="line-number">14</span> apt:
+<span class="line-number">15</span>   preserve_sources_list: true
+<span class="line-number">16</span>   sources_list: |
+<span class="line-number">17</span>     Types: deb
+<span class="line-number">18</span>     URIs: https://packages.microsoft.com/ubuntu/{{ distro_version }}/prod
+<span class="line-number">19</span>     Suites: $RELEASE
+<span class="line-number">20</span>     Components: main
+<span class="line-number">21</span>     Signed-By: $KEY_FILE
+<span class="line-number">22</span>   sources:
+<span class="line-number">23</span>     microsoft-prod:
+<span class="line-number">24</span>       source: 'deb [arch=amd64,armhf,arm64 signed-by=$KEY_FILE] https://packages.microsoft.com/ubuntu/{{ distro_version }}/prod $RELEASE main'
+<span class="line-number">25</span>       # Convert binary key to ASCII
+<span class="line-number">26</span>       # gpg --keyring /etc/apt/trusted.gpg.d/microsoft-prod.gpg --no-default-keyring --export -a &gt; microsoft.asc
+<span class="line-number">27</span>       key: |
+<span class="line-number">28</span>         -----BEGIN PGP PUBLIC KEY BLOCK-----
+<span class="line-number">29</span> 
+<span class="line-number">30</span>         mQENBFYxWIwBCADAKoZhZlJxGNGWzqV+1OG1xiQeoowKhssGAKvd+buXCGISZJwT
+<span class="line-number">31</span>         LXZqIcIiLP7pqdcZWtE9bSc7yBY2MalDp9Liu0KekywQ6VVX1T72NPf5Ev6x6DLV
+<span class="line-number">32</span>         7aVWsCzUAF+eb7DC9fPuFLEdxmOEYoPjzrQ7cCnSV4JQxAqhU4T6OjbvRazGl3ag
+<span class="line-number">33</span>         OeizPXmRljMtUUttHQZnRhtlzkmwIrUivbfFPD+fEoHJ1+uIdfOzZX8/oKHKLe2j
+<span class="line-number">34</span>         H632kvsNzJFlROVvGLYAk2WRcLu+RjjggixhwiB+Mu/A8Tf4V6b+YppS44q8EvVr
+<span class="line-number">35</span>         M+QvY7LNSOffSO6Slsy9oisGTdfE39nC7pVRABEBAAG0N01pY3Jvc29mdCAoUmVs
+<span class="line-number">36</span>         ZWFzZSBzaWduaW5nKSA8Z3Bnc2VjdXJpdHlAbWljcm9zb2Z0LmNvbT6JATUEEwEC
+<span class="line-number">37</span>         AB8FAlYxWIwCGwMGCwkIBwMCBBUCCAMDFgIBAh4BAheAAAoJEOs+lK2+EinPGpsH
+<span class="line-number">38</span>         /32vKy29Hg51H9dfFJMx0/a/F+5vKeCeVqimvyTM04C+XENNuSbYZ3eRPHGHFLqe
+<span class="line-number">39</span>         MNGxsfb7C7ZxEeW7J/vSzRgHxm7ZvESisUYRFq2sgkJ+HFERNrqfci45bdhmrUsy
+<span class="line-number">40</span>         7SWw9ybxdFOkuQoyKD3tBmiGfONQMlBaOMWdAsic965rvJsd5zYaZZFI1UwTkFXV
+<span class="line-number">41</span>         KJt3bp3Ngn1vEYXwijGTa+FXz6GLHueJwF0I7ug34DgUkAFvAs8Hacr2DRYxL5RJ
+<span class="line-number">42</span>         XdNgj4Jd2/g6T9InmWT0hASljur+dJnzNiNCkbn9KbX7J/qK1IbR8y560yRmFsU+
+<span class="line-number">43</span>         NdCFTW7wY0Fb1fWJ+/KTsC4=
+<span class="line-number">44</span>         =J6gs
+<span class="line-number">45</span>         -----END PGP PUBLIC KEY BLOCK-----
+<span class="line-number">46</span> </code></pre><p>In the module below, we're ignoring any existing Ansible powershell helpers that may exist for simplicity's sake. To start, we read an Ansible provided parameter file from <code>arg0</code> to produce a hashtable.</p><div class="markdown-alert markdown-alert-important"><p class="markdown-alert-title"><svg viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="M0 1.75C0 .784.784 0 1.75 0h12.5C15.216 0 16 .784 16 1.75v9.5A1.75 1.75 0 0 1 14.25 13H8.06l-2.573 2.573A1.458 1.458 0 0 1 3 14.543V13H1.75A1.75 1.75 0 0 1 0 11.25Zm1.75-.25a.25.25 0 0 0-.25.25v9.5c0 .138.112.25.25.25h2a.75.75 0 0 1 .75.75v2.19l2.72-2.72a.749.749 0 0 1 .53-.22h6.5a.25.25 0 0 0 .25-.25v-9.5a.25.25 0 0 0-.25-.25Zm7 2.25v2.5a.75.75 0 0 1-1.5 0v-2.5a.75.75 0 0 1 1.5 0ZM9 9a1 1 0 1 1-2 0 1 1 0 0 1 2 0Z"></path></svg>Important</p><p>Crucially, the string <code>WANT_JSON</code> is set somewhere in the module because it tells Ansible to pass us JSON instead of key/value pairs.</p></div><p>Since idempotency is a core principle of Ansible, it's important that our module abides by it. If you're not already familiar, Powershell supports idempotency via WhatIf mode which is controlled using the <code>$WhatIfPreference</code> variable and <code>-WhatIf</code> flag for advanced cmdlets (ones with <code>[CmdletBinding()]</code> above the <code>param</code> block). Below, we set <code>$WhatIfPreference = $Ansible._ansible_check_mode</code> to ensure our code executes in WhatIf mode when the <code>-C</code> or <code>--check</code> flag is provided. Builtin cmdlets like <code>New-Item</code> support WhatIf mode already, and inherit that setting from the caller, so nothing special needs done. Any code that doesn't support or properly implement WhatIf mode needs to be wrapped using <code>ShouldProcess</code> as in <code>if ($PSCmdlet.ShouldProcess("Target", "Perform Task") { ...code... }</code>.</p><p>If you need a fresher or refresher on <code>ShouldProcess</code> please consult <a href="https://learn.microsoft.com/en-us/powershell/scripting/learn/deep-dives/everything-about-shouldprocess?view=powershell-7.4">this excellent guide</a>.</p><p>Everything else in the module is standard powershell and ends with us serializing our response as JSON so Ansible can use it to check for changes and present them to the user.</p><h3 id="powershell-script">Powershell Script</h3><p><strong>library/powershell_example.ps1</strong></p><pre><code class="language-powershell"><span class="line-number">01</span> #!/usr/bin/env pwsh
+<span class="line-number">02</span> 
+<span class="line-number">03</span> &lt;#
+<span class="line-number">04</span> .SYNOPSIS
+<span class="line-number">05</span>     Places a file on the filesystem
+<span class="line-number">06</span> 
+<span class="line-number">07</span> .NOTES
+<span class="line-number">08</span>     Maybe Ansible.ModuleUtils.Legacy module is useful here?
+<span class="line-number">09</span> 
+<span class="line-number">10</span> .LINK
+<span class="line-number">11</span>     https://github.com/ansible/ansible/blob/1ad0c404ef05f6d6a03d59ad25b55860f15d1da0/lib/ansible/module_utils/powershell/Ansible.ModuleUtils.Legacy.psm1#L140
+<span class="line-number">12</span> #&gt;
+<span class="line-number">13</span> 
+<span class="line-number">14</span> # (Crucial) Indicate that this is a non-native module
+<span class="line-number">15</span> # https://docs.ansible.com/ansible/2.7/dev_guide/developing_program_flow_modules.html#non-native-want-json-modules
+<span class="line-number">16</span> # WANT_JSON
+<span class="line-number">17</span> 
+<span class="line-number">18</span> $Ansible = Get-Content $Args[0] | ConvertFrom-Json
+<span class="line-number">19</span> $WhatIfPreference = $Ansible._ansible_check_mode
+<span class="line-number">20</span> 
+<span class="line-number">21</span> # Result to return to Ansible at end of script
+<span class="line-number">22</span> $Result = @{
+<span class="line-number">23</span>     path = ''
+<span class="line-number">24</span>     changed = $true
+<span class="line-number">25</span>     original_state = ''
+<span class="line-number">26</span>     state = ''
+<span class="line-number">27</span> }
+<span class="line-number">28</span> 
+<span class="line-number">29</span> $Path = $Ansible.Path #  /etc/testing/foo.txt
+<span class="line-number">30</span> $Result.Path = $Path
+<span class="line-number">31</span> 
+<span class="line-number">32</span> if (-not (Test-Path $Path)) {
+<span class="line-number">33</span>     New-Item $Path -Force
+<span class="line-number">34</span>     $Result.original_state = 'Absent'
+<span class="line-number">35</span>     $Result.state = 'Present'
+<span class="line-number">36</span> } else {
+<span class="line-number">37</span>     $Result.Changed = $false
+<span class="line-number">38</span>     $Result.original_state = 'Present'
+<span class="line-number">39</span>     $Result.state = 'Present'
+<span class="line-number">40</span> }
+<span class="line-number">41</span> 
+<span class="line-number">42</span> return $Result | ConvertTo-Json -Depth 100 -Compress
+<span class="line-number">43</span> </code></pre><div class="markdown-alert markdown-alert-important"><p class="markdown-alert-title"><svg viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="M0 1.75C0 .784.784 0 1.75 0h12.5C15.216 0 16 .784 16 1.75v9.5A1.75 1.75 0 0 1 14.25 13H8.06l-2.573 2.573A1.458 1.458 0 0 1 3 14.543V13H1.75A1.75 1.75 0 0 1 0 11.25Zm1.75-.25a.25.25 0 0 0-.25.25v9.5c0 .138.112.25.25.25h2a.75.75 0 0 1 .75.75v2.19l2.72-2.72a.749.749 0 0 1 .53-.22h6.5a.25.25 0 0 0 .25-.25v-9.5a.25.25 0 0 0-.25-.25Zm7 2.25v2.5a.75.75 0 0 1-1.5 0v-2.5a.75.75 0 0 1 1.5 0ZM9 9a1 1 0 1 1-2 0 1 1 0 0 1 2 0Z"></path></svg>Important</p><p>In our playbook file we set the TERM env to <code>dumb</code> to avoid an issue with Powershell escape codes mucking up the JSON response from our module which Ansible uses to determine whether it succeeded.</p></div><p>We provide the name of the module as a task and provide any properties our module expects. In this case, we just need the <code>path</code> to the file to create.</p><h3 id="playbook">Playbook</h3><p><strong>playbooks/powershell_example.yml</strong></p><pre><code class="language-yml"><span class="line-number">01</span> - name: Test
+<span class="line-number">02</span>   hosts: all
+<span class="line-number">03</span>   become: true
+<span class="line-number">04</span>   environment:
+<span class="line-number">05</span>     # Avoid escape codes breaking output
+<span class="line-number">06</span>     # See https://github.com/ansible/ansible/issues/48881#issuecomment-440481672
+<span class="line-number">07</span>     - TERM: dumb
+<span class="line-number">08</span>   gather_facts: true
+<span class="line-number">09</span>   tasks:
+<span class="line-number">10</span>     - name: Test
+<span class="line-number">11</span>       powershell_example:
+<span class="line-number">12</span>         path: '/etc/testing/foo.txt'
+<span class="line-number">13</span> </code></pre><p>Finally, we test our playbook against a machine, substituting <code>1.2.3.4</code> with an IP address or hostname.</p><pre><code class="language-bash"><span class="line-number">01</span> # Dry run
+<span class="line-number">02</span> ansible-playbook playbooks/powershell_example.yml -C -i ', 1.2.3.4' -v
+<span class="line-number">03</span> 
+<span class="line-number">04</span> # Real run
+<span class="line-number">05</span> ansible-playbook playbooks/powershell_example.yml -i ', 1.2.3.4' -v
+<span class="line-number">06</span> </code></pre></div></article></main><footer><small>Thanks for reading.</small></footer></body></html>

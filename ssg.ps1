@@ -5,6 +5,9 @@ function Build-Site {
     param (
         [ValidateNotNullOrEmpty()]
         [string] $PostsDirectory = "posts",
+
+        [ValidateNotNullOrEmpty()]
+        [string] $PagesDirectory = "pages",
         
         [ValidateNotNullOrEmpty()]
         [string] $OutputDirectory = "docs",
@@ -23,6 +26,11 @@ function Build-Site {
     New-Item -ItemType Directory -Path "$OutputDirectory/posts" -Force | Out-Null
     New-Item -ItemType File -Path "$OutputDirectory/.nojekyll" -Force | Out-Null
     Copy-Item -Path ./assets -Destination $OutputDirectory -Recurse -Force
+
+    # Copy static standalone pages (about.html, uses.html, etc.) if present.
+    if (Test-Path $PagesDirectory) {
+        Copy-Item -Path "$PagesDirectory/*" -Destination $OutputDirectory -Recurse -Force
+    }
 
     $Template = Get-Content -Path $TemplateFile -Raw
 
@@ -48,7 +56,8 @@ function Build-Site {
             $DateString = ($Lines | Where-Object { $_ -match "^date:\s*(.*)" }) -replace "^date:\s*", ""
             $Date = [DateTime]::Parse($DateString).ToString("yyyy-MM-dd")
 
-            $ContentParts = $RawContent -split "---`r?`n"
+            # To avoid splitting on the wrong "---" in the content, we will split only on the first two occurrences of "---"
+            $ContentParts = $RawContent -split "---`r?`n", 3
             $PostContent = $ContentParts[2]
 
             # Create a new HTML file for the post
@@ -58,10 +67,15 @@ function Build-Site {
             $PostObject = ConvertFrom-Markdown -InputObject $PostContent
 
             # Replace placeholders in the master template with actual content
-            $PostHtml = $Template -replace "{{\s*title\s*}}", $Title -replace "{{\s*content\s*}}", $PostObject.Html -replace "{{\s*date\s*}}", $Date
+            $PostHtml = $Template `
+                -replace "{{\s*title\s*}}", $Title `
+                -replace "{{\s*content\s*}}", $PostObject.Html `
+                -replace "{{\s*date\s*}}", $Date
+
+            $ProcessedHtml = Format-HtmlCodeBlocks -InputObject $PostHtml
 
             # Write the final HTML to the new file
-            Set-Content -Path $PostFilePath -Value $PostHtml
+            Set-Content -Path $PostFilePath -Value $ProcessedHtml
 
             # Add a link to the post in the post list
             $PostListHtml += "<li>$Date - <a href='posts/$PostFileName'>$Title</a></li>`n"
@@ -184,3 +198,105 @@ function Remove-Post {
         Write-Warning "Could not find the file for the post titled '$Title'."
     }
 }
+
+function Format-HtmlCodeBlocks {
+    [CmdletBinding(DefaultParameterSetName="InputFile")]
+    [OutputType([void], [string])]
+    param(
+        [Parameter(Mandatory,ParameterSetName="InputObject",ValueFromPipeline)]
+        [ValidateNotNullOrEmpty()]
+        [object] $InputObject,
+
+        [Parameter(Mandatory,ParameterSetName="InputFile")]
+        [ValidateNotNullOrEmpty()]
+        [string] $InputFile,
+
+        [ValidateNotNullOrEmpty()]
+        [string] $OutputFile,
+
+        [switch] $Overwrite
+    )
+
+    if ($PSCmdlet.ParameterSetName -eq "InputFile") {
+        if (-not (Test-Path $InputFile)) {
+            Write-Error "Input file '$InputFile' does not exist."
+            return
+        }
+
+        $RawContent = Get-Content -Path $InputFile -Raw
+        $HtmlContent = [xml] $RawContent
+    } elseif ($PSCmdlet.ParameterSetName -eq "InputObject" -and $InputObject -is [string]) {
+        $RawContent = $InputObject
+        $HtmlContent = [xml] $RawContent
+    } elseif ($PSCmdlet.ParameterSetName -eq "InputObject" -and $InputObject -is [xml]) {
+        $HtmlContent = $InputObject
+    } else {
+        Write-Error "Invalid input object type. Must be a string or XML."
+        return
+    }
+
+    # get code blocks from html
+    $CodeBlocks = $HtmlContent.SelectNodes("//pre/code")
+    foreach ($CodeBlock in $CodeBlocks) {
+        # Add numbered lines by wrapping each line of code in a <span> element
+        $CodeLines = $CodeBlock.InnerText -split "`r?`n"
+        $Width = [Math]::Max(2, $CodeLines.Count.ToString().Length)
+        $Counter = 1
+        $Codeblock.InnerXml = (
+            $CodeLines |
+            ForEach-Object {
+                $LineNumber = $Counter.ToString("D$Width")
+                $EscapedLine = [System.Security.SecurityElement]::Escape($_)
+                "<span class='line-number'>$LineNumber</span> $EscapedLine"
+                $Counter++
+            }
+        ) -join "`n"
+    }
+
+    if ($Overwrite) { $OutputFile = $InputFile }
+    
+    if ($OutputFile) {
+        $HtmlContent.OuterXml | Set-Content -Path $OutputFile
+    } else {
+        Write-Output $HtmlContent.OuterXml
+    }
+}
+
+#Format-HtmlCodeBlocks -InputFile .\docs\posts\2024-12-10_093000-Writing-Ansible-With-Powershell.html
+
+function Apply-SyntaxHighlighting {
+    [CmdletBinding()]
+    [OutputType([void])]
+    param(
+        [Parameter(Mandatory)]
+        [ValidateNotNullOrEmpty()]
+        [string] $InputFile,
+
+        [Parameter(Mandatory)]
+        [ValidateNotNullOrEmpty()]
+        [string] $OutputFile
+    )
+
+    if (-not (Test-Path $InputFile)) {
+        Write-Error "Input file '$InputFile' does not exist."
+        return
+    }
+
+    $RawContent = Get-Content -Path $InputFile -Raw
+    $HighlightedContent = ConvertFrom-Markdown -InputObject $RawContent
+    $HtmlContent = [xml] $HighlightedContent.Html
+    # get code blocks from html
+    $CodeBlocks = $HtmlContent.SelectNodes("//pre/code")
+    foreach ($CodeBlock in $CodeBlocks) {
+        $Language = $CodeBlock.GetAttribute("class")
+        if ($Language -match "language-(\w+)") {
+            $Lang = $Matches[1]
+            # Use Pygments or any other syntax highlighter here
+            # For demonstration, we'll just wrap it in a div with the language class
+            $CodeBlock.ParentNode.InnerXml = "<div class='highlight $Lang'>$($CodeBlock.InnerXml)</div>"
+        }
+    }
+    $HtmlContent.OuterXml | Set-Content -Path $OutputFile
+}
+
+build-site

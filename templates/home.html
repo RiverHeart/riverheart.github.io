@@ -1,19 +1,27 @@
-<!DOCTYPE html>
 <html lang="en">
     <head>
-        <title>Test</title>
-        <link rel="stylesheet" href="../assets/css/sakura.css" type="text/css">
+        <title>Home</title>
+        <link rel="stylesheet" href="../assets/css/sakura.css" type="text/css" />
+        <link rel="stylesheet" href="../assets/css/custom.css" type="text/css" />
     </head>
     <body>
-        <h1>Welcome</h1>
+        <a href="./index.html">Home</a>
+        <a href="./about.html">About</a>
 
-        <p>This is a test page.</p>
+        <header>
+            <h1>Riverheart</h1>
+            <p>Notes on engineering, automation, and experiments.</p>
+        </header>
 
-        <h2>Posts</h2>
-        <div id="post-list">
-            <ul>
-                {{ posts }}
-            </ul>
-        </div>
+        <main>
+            <section aria-labelledby="posts-heading">
+                <h2 id="posts-heading">Latest Posts</h2>
+                <div id="post-list">
+                    <ul>
+                        {{ posts }}
+                    </ul>
+                </div>
+            </section>
+        </main>
     </body>
 </html>

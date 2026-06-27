@@ -1,0 +1,51 @@
+body {
+  max-width: 44em;
+}
+
+code {
+    background-color: #e5e5e5;
+    color: #333333;
+    font-family: monospace;
+    padding: 0.2em 0.4em;
+    border-radius: 4px;
+    font-size: 0.9em;
+    overflow-x: visible;
+    white-space: normal;
+}
+
+/* Override Sakura defaults so custom block-code styles do not conflict */
+pre {
+    background-color: transparent;
+    padding: 0;
+    overflow-x: auto;
+}
+
+pre > code {
+    padding: 0;
+    background-color: transparent;
+    white-space: pre;
+}
+
+pre code {
+    background-color: #f8fafc;
+    padding: 0;
+    border-radius: 0;
+    display: block;
+    min-width: max-content;
+}
+
+pre code .line-number {
+    color: #4b5563;
+    display: inline-block;
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    min-width: 4ch;
+    margin-right: 0;
+    padding: 0 0.6em 0 0.4em;
+    border-right: 1px solid #9ca3af;
+    background-color: #d5dde8;
+    text-align: right;
+    user-select: none;
+    font-variant-numeric: tabular-nums;
+}
