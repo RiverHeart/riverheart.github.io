@@ -5,7 +5,7 @@ date: 2024-12-10T09:30:00-04:00
 
 ## Overview
 
-Hello fine people of the internet! After banging my head against the proverbial wall I've come to share the wisdom leaking out of my head.
+Hello fine people of the internet! After banging my head against the proverbial wall I've come to share the wisdom leaking out of my head. Wisdom is red right...?
 
 If you're here I assume you, like me, are a Powershell fanboy not content to meekly run Powershell scripts from YAML. No? Perhaps you recognize Python's clunkiness for sysadmin work, and you WANT learn how to use Powershell in it's raw form to manage Linux machines. Maybe you'd like to use this method to write modules in another language entirely, that's entirely doable. Whatever the reason you're here to learn and learning is great.
 
