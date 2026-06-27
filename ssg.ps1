@@ -54,7 +54,9 @@ function Build-Site {
             $Title = ($Lines | Where-Object { $_ -match "^title:\s*(.*)" }) -replace "^title:\s*", ""
             $Titles += $Title
             $DateString = ($Lines | Where-Object { $_ -match "^date:\s*(.*)" }) -replace "^date:\s*", ""
-            $Date = [DateTime]::Parse($DateString).ToString("yyyy-MM-dd")
+            $PostDate = [DateTimeOffset]::Parse($DateString)
+            $DateForPost = $PostDate.ToString("MMM d, yyyy 'at' h:mm tt zzz")
+            $DateForList = $PostDate.ToString("yyyy-MM-dd")
 
             # To avoid splitting on the wrong "---" in the content, we will split only on the first two occurrences of "---"
             $ContentParts = $RawContent -split "---`r?`n", 3
@@ -70,7 +72,7 @@ function Build-Site {
             $PostHtml = $Template `
                 -replace "{{\s*title\s*}}", $Title `
                 -replace "{{\s*content\s*}}", $PostObject.Html `
-                -replace "{{\s*date\s*}}", $Date
+                -replace "{{\s*date\s*}}", $DateForPost
 
             $ProcessedHtml = Format-HtmlCodeBlocks -InputObject $PostHtml
 
@@ -78,7 +80,7 @@ function Build-Site {
             Set-Content -Path $PostFilePath -Value $ProcessedHtml
 
             # Add a link to the post in the post list
-            $PostListHtml += "<li>$Date - <a href='posts/$PostFileName'>$Title</a></li>`n"
+            $PostListHtml += "<li>$DateForList - <a href='posts/$PostFileName'>$Title</a></li>`n"
         }
 
         Export-Clixml -InputObject $Titles -Path "$PostsDirectory/titles.clixml"
@@ -262,7 +264,6 @@ function Format-HtmlCodeBlocks {
     }
 }
 
-#Format-HtmlCodeBlocks -InputFile .\docs\posts\2024-12-10_093000-Writing-Ansible-With-Powershell.html
 
 function Apply-SyntaxHighlighting {
     [CmdletBinding()]

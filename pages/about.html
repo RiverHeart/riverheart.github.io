@@ -5,8 +5,7 @@
         <link rel="stylesheet" href="../assets/css/custom.css" type="text/css" />
     </head>
     <body>
-        <a href="./index.html">Home</a>
-        <a href="./about.html">About</a>
+        [ <a href="./index.html">Home</a>, <a href="./about.html">About</a> ]
 
         <main>
             <section aria-labelledby="about-heading">
@@ -17,21 +16,17 @@
             <section aria-labelledby="profiles-heading">
                 <h2 id="profiles-heading">Profiles</h2>
                 <p>You can find my code and Q&amp;A activity here:</p>
-                <ul>
-                    <li>
-                        GitHub:
-                        <a href="https://github.com/RiverHeart" target="_blank" rel="me noopener noreferrer">github.com/RiverHeart</a>
-                    </li>
-                    <li>
-                        Stack Overflow:
-                        <a href="https://stackoverflow.com/users/5339918/riverheart" target="_blank" rel="me noopener noreferrer">stackoverflow.com/users/5339918/riverheart</a>
-                    </li>
-                </ul>
+                <div class="profile-links">
+                    <a class="profile-link" href="https://github.com/RiverHeart" target="_blank" rel="me noopener noreferrer">
+                        <img src="../assets/icons/github-brands-solid-full.svg" alt="" width="24" height="24" aria-hidden="true" />
+                        <span>github.com/RiverHeart</span>
+                    </a>
+                    <a class="profile-link" href="https://stackoverflow.com/users/5339918/riverheart" target="_blank" rel="me noopener noreferrer">
+                        <img src="../assets/icons/stack-overflow-brands-solid-full.svg" alt="" width="24" height="24" aria-hidden="true" />
+                        <span>stackoverflow.com/users/5339918/riverheart</span>
+                    </a>
+                </div>
             </section>
         </main>
-
-        <footer>
-            <small>Thanks for reading.</small>
-        </footer>
     </body>
 </html>

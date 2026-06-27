@@ -2,6 +2,13 @@ body {
   max-width: 44em;
 }
 
+.post-datetime {
+        text-align: center;
+        color: #6b7280;
+        font-size: 0.9em;
+        margin-top: -0.8rem;
+}
+
 code {
     background-color: #e5e5e5;
     color: #333333;
@@ -48,4 +55,28 @@ pre code .line-number {
     text-align: right;
     user-select: none;
     font-variant-numeric: tabular-nums;
+}
+
+.profile-links {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 2.5rem;
+}
+
+.profile-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    width: fit-content;
+    border-bottom: none;
+}
+
+.profile-link:hover {
+    border-bottom: none;
+}
+
+.profile-link img {
+    margin: 0;
+    display: block;
 }
