@@ -1,4 +1,11 @@
 
+<#
+.NOTES
+    If XmlWriter fails to indent things properly it's likely because the input contains
+    mixed content(text nodes and element nodes) in a way that makes it impossible to indent
+    properly. Ensure that all text nodes are wrapped in elements so they do not trigger mixed
+    content mode.
+#>
 function Build-Site {
     [CmdletBinding()]
     [OutputType([void])]
@@ -16,16 +23,34 @@ function Build-Site {
         [string] $TemplateFile = "templates/layout.html",
 
         [ValidateNotNullOrEmpty()]
-        [string] $HomeTemplateFile = "templates/home.html"
+        [string] $HomeTemplateFile = "templates/home.html",
+
+        [ValidateNotNullOrEmpty()]
+        [string] $AssetsDirectory = "assets",
+
+        [ValidateNotNullOrEmpty()]
+        [string] $ConfigFile = "$PSScriptRoot/ssg.json"
     )
+
+    $XmlWriterSettings = [System.Xml.XmlWriterSettings]::new()
+    $XmlWriterSettings.Indent = $true
+    $XmlWriterSettings.IndentChars = "  "
+    $XmlWriterSettings.OmitXmlDeclaration = $true
 
     if (Test-Path $OutputDirectory) {
         Remove-Item -Recurse -Force $OutputDirectory
     }
 
+    try {
+        $ssgConfig = Get-Content -Path "$ConfigFile" | ConvertFrom-Json
+    } catch {
+        Write-Error "Could not read '$ConfigFile'. Ensure it exists and is valid JSON."
+        return
+    }
+
     New-Item -ItemType Directory -Path "$OutputDirectory/posts" -Force | Out-Null
     New-Item -ItemType File -Path "$OutputDirectory/.nojekyll" -Force | Out-Null
-    Copy-Item -Path ./assets -Destination $OutputDirectory -Recurse -Force
+    Copy-Item -Path "$AssetsDirectory" -Destination $OutputDirectory -Recurse -Force
 
     # Copy static standalone pages (about.html, uses.html, etc.) if present.
     if (Test-Path $PagesDirectory) {
@@ -53,6 +78,7 @@ function Build-Site {
             $Lines = $RawContent -split "`r?`n"
             $Title = ($Lines | Where-Object { $_ -match "^title:\s*(.*)" }) -replace "^title:\s*", ""
             $Titles += $Title
+            $Description = ($Lines | Where-Object { $_ -match "^description:\s*(.*)" }) -replace "^description:\s*", ""
             $DateString = ($Lines | Where-Object { $_ -match "^date:\s*(.*)" }) -replace "^date:\s*", ""
             $PostDate = [DateTimeOffset]::Parse($DateString)
             $DateForPost = $PostDate.ToString("MMM d, yyyy 'at' h:mm tt zzz")
@@ -74,7 +100,29 @@ function Build-Site {
                 -replace "{{\s*content\s*}}", $PostObject.Html `
                 -replace "{{\s*date\s*}}", $DateForPost
 
-            $ProcessedHtml = Format-HtmlCodeBlocks -InputObject $PostHtml
+            # TODO: Formatting issue. PostHtml looks fine but the ProcessedHtml output is not indented properly.
+            # I might not need to use XmlWriter at all if this can be fixed. It's better that XmlWriter not be
+            # used since it's putting the codeblock spans on newlines and breaking the layout.
+            $ProcessedHtml = Format-HtmlCode $PostHtml
+
+            #$PostDocument = [System.Xml.Linq.XDocument]::Parse("$ProcessedHtml")
+
+            # if ($null -eq $PostDocument.SelectSingleNode("//head")) {
+            #     $HeadNode = $PostDocument.CreateElement("head")
+            #     $PostDocument.DocumentElement.PrependChild($HeadNode) | Out-Null
+            # } else {
+            #     $HeadNode = $PostDocument.SelectSingleNode("//head")
+            # }
+
+            # # Add open graph meta tags for social media sharing
+            # $HeadNode.AppendChild($PostDocument.CreateElement("meta")).SetAttribute("property", "og:title")
+            # $HeadNode.LastChild.SetAttribute("content", $Title)
+            # $HeadNode.AppendChild($PostDocument.CreateElement("meta")).SetAttribute("property", "og:description")
+            # $HeadNode.LastChild.SetAttribute("content", $Description)
+            # $HeadNode.AppendChild($PostDocument.CreateElement("meta")).SetAttribute("property", "og:type")
+            # $HeadNode.LastChild.SetAttribute("content", "article")
+            # $HeadNode.AppendChild($PostDocument.CreateElement("meta")).SetAttribute("property", "og:url")
+            # $HeadNode.LastChild.SetAttribute("content", "$($ssgConfig.url)/posts/$PostFileName")
 
             # Write the final HTML to the new file
             Set-Content -Path $PostFilePath -Value $ProcessedHtml
@@ -89,18 +137,31 @@ function Build-Site {
     # Generate the index.html file with the list of posts
     $HomeTemplate = Get-Content -Path $HomeTemplateFile -Raw
     $IndexHtml = $HomeTemplate -replace "{{\s*title\s*}}", "Home" -replace "{{\s*posts\s*}}", $PostListHtml
-    Set-Content -Path "$OutputDirectory/index.html" -Value $IndexHtml
+
+    try {
+        $XmlWriter = [System.Xml.XmlWriter]::Create("$OutputDirectory/index.html", $XmlWriterSettings)
+        $XmlWriter.WriteRaw($IndexHtml)
+    } catch {
+        Write-Error "Failed to write index.html: $_"
+    } finally {
+        if ($XmlWriter) {
+            $XmlWriter.Close()
+        }
+    }
 
     Write-Host "Static site generation complete. Check the '$OutputDirectory' directory for output."
 }
 
-function New-Post {
+function New-BlogPost {
     [CmdletBinding()]
     [OutputType([void])]
     param(
         [Parameter(Mandatory)]
         [ValidateNotNullOrEmpty()]
         [string] $Title,
+
+        [ValidateLength(1, 150)]
+        [string] $Description,
 
         [ValidateNotNullOrEmpty()]
         [string] $PostsDirectory = "posts"
@@ -136,6 +197,7 @@ function New-Post {
 ---
 title: $Title
 date: $DateExact
+description: $Description
 ---
 
 Your content here...
@@ -153,7 +215,7 @@ Your content here...
     }
 }
 
-function Remove-Post {
+function Remove-BlogPost {
     [CmdletBinding()]
     [OutputType([void])]
     param(
@@ -201,70 +263,85 @@ function Remove-Post {
     }
 }
 
-function Format-HtmlCodeBlocks {
-    [CmdletBinding(DefaultParameterSetName="InputFile")]
+<#
+.NOTES
+    We can't cast the input to [xml] and work on OuterXML because it'll screw up the formatting of the entire
+    document. We'll need to isolate the code blocks, format them, and then replace them in the original HTML string.
+#>
+function Format-HtmlCode {
+    [CmdletBinding()]
     [OutputType([void], [string])]
     param(
-        [Parameter(Mandatory,ParameterSetName="InputObject",ValueFromPipeline)]
+        [Parameter(Mandatory,ValueFromPipeline)]
         [ValidateNotNullOrEmpty()]
-        [object] $InputObject,
-
-        [Parameter(Mandatory,ParameterSetName="InputFile")]
-        [ValidateNotNullOrEmpty()]
-        [string] $InputFile,
-
-        [ValidateNotNullOrEmpty()]
-        [string] $OutputFile,
-
-        [switch] $Overwrite
+        [string] $Html
     )
 
-    if ($PSCmdlet.ParameterSetName -eq "InputFile") {
-        if (-not (Test-Path $InputFile)) {
-            Write-Error "Input file '$InputFile' does not exist."
-            return
-        }
+    # Parse code blocks from the HTML content without xml
+    $WeAreInsideCodeBlock = $false
+    $StringBuilder = [System.Text.StringBuilder]::new()
+    $CodeBlock = [System.Collections.Generic.List[string]]::new()
 
-        $RawContent = Get-Content -Path $InputFile -Raw
-        $HtmlContent = [xml] $RawContent
-    } elseif ($PSCmdlet.ParameterSetName -eq "InputObject" -and $InputObject -is [string]) {
-        $RawContent = $InputObject
-        $HtmlContent = [xml] $RawContent
-    } elseif ($PSCmdlet.ParameterSetName -eq "InputObject" -and $InputObject -is [xml]) {
-        $HtmlContent = $InputObject
-    } else {
-        Write-Error "Invalid input object type. Must be a string or XML."
-        return
-    }
+    foreach($Line in $Html -split "`r?`n") {
+        $OpeningTag, $RestOfLine = $null, $null
 
-    # get code blocks from html
-    $CodeBlocks = $HtmlContent.SelectNodes("//pre/code")
-    foreach ($CodeBlock in $CodeBlocks) {
-        # Add numbered lines by wrapping each line of code in a <span> element
-        $CodeLines = $CodeBlock.InnerText -split "`r?`n"
-        $Width = [Math]::Max(2, $CodeLines.Count.ToString().Length)
-        $Counter = 1
-        $Codeblock.InnerXml = (
-            $CodeLines |
-            ForEach-Object {
-                $LineNumber = $Counter.ToString("D$Width")
-                $EscapedLine = [System.Security.SecurityElement]::Escape($_)
-                "<span class='line-number'>$LineNumber</span> $EscapedLine"
-                $Counter++
+        if ($Line -match "<pre><code.*?>") {
+            $WeAreInsideCodeBlock = $true
+            $CodeBlock.Clear() | Out-Null
+
+            # Split the line to separate the opening <pre><code> tag from the rest of the content
+            $OpeningTag, $RestOfLine = $Line -split "(?<=<pre><code.*?>)", 2
+            if ($OpeningTag) {
+                $StringBuilder.AppendLine($OpeningTag) | Out-Null
             }
-        ) -join "`n"
-    }
+            if ($RestOfLine) {
+                $CodeBlock.Add($RestOfLine) | Out-Null
+            }
+        } elseif ($Line -match "</code></pre>") {
+            $WeAreInsideCodeBlock = $false
+            # Split the line to separate the closing </code></pre> tag from the rest of the content
+            $RestOfLine, $ClosingTag = $Line -split "(?=</code></pre>)", 2
+            if ($RestOfLine) {
+                $CodeBlock.Add($RestOfLine) | Out-Null
+            }
 
-    if ($Overwrite) { $OutputFile = $InputFile }
-    
-    if ($OutputFile) {
-        $HtmlContent.OuterXml | Set-Content -Path $OutputFile
-    } else {
-        Write-Output $HtmlContent.OuterXml
+            # Process the code block content
+            (Format-HtmlCodeBlock $CodeBlock) | Foreach-Object {
+                $StringBuilder.AppendLine($_) | Out-Null
+            }
+
+            if ($ClosingTag) {
+                $StringBuilder.AppendLine($ClosingTag) | Out-Null
+            }
+        } elseif ($WeAreInsideCodeBlock) {
+            $CodeBlock.Add($Line) | Out-Null
+        } else {
+            $StringBuilder.AppendLine($Line) | Out-Null
+        }
+    }
+    return $StringBuilder.ToString()
+}
+
+function Format-HtmlCodeBlock {
+    [CmdletBinding()]
+    [OutputType([System.Collections.Generic.List[string]])]
+    param(
+        [System.Collections.Generic.List[string]] $CodeBlock
+    )
+
+    $Width = [Math]::Max(2, $CodeBlock.Count.ToString().Length)
+    $Counter = 1
+    foreach ($Line in $CodeBlock) {
+        $LineNumber = $Counter.ToString("D$Width")
+        $EscapedLine = [System.Security.SecurityElement]::Escape($Line)
+        $FormattedLine = "<span class='line-number'>$LineNumber</span> $EscapedLine"
+        $Counter++
+        Write-Output $FormattedLine
     }
 }
 
 
+# TODO: Grab powershell.tmLanguage from the VSCode extension and use it to highlight code blocks.
 function Apply-SyntaxHighlighting {
     [CmdletBinding()]
     [OutputType([void])]

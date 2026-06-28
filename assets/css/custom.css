@@ -81,6 +81,36 @@ pre code .line-number {
     display: block;
 }
 
+/*
+MARK: NAVBAR
+Navigation list styles for inline display
+*/
+
+.nav-list-inline {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: row;
+    gap: 0.5rem;
+    margin-bottom: 2.5rem;
+}
+
+.nav-list-inline a {
+    text-decoration: none;
+    color: inherit;
+}
+
+.nav-list-inline li + li:before {
+    content: " | ";
+    padding: 0 10px;
+}
+
+/* 
+MARK: MD ALERTS
+Custom block styles for Markdown alerts
+*/
+
 .markdown-alert {
     padding: 16px;
     margin-bottom: 16px;
