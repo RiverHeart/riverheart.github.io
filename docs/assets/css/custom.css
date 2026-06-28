@@ -88,6 +88,10 @@ pre code .line-number {
     background-color: transparent;
 }
 
+.markdown-alert p {
+    margin: 0;
+}
+
 .markdown-alert-title {
     display: flex;
     align-items: center;
