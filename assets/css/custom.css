@@ -80,3 +80,63 @@ pre code .line-number {
     margin: 0;
     display: block;
 }
+
+.markdown-alert {
+    padding: 16px;
+    margin-bottom: 16px;
+    border-left: 4px solid;
+    background-color: transparent;
+}
+
+.markdown-alert-title {
+    display: flex;
+    align-items: center;
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 4px;
+    gap: 8px;
+}
+
+.markdown-alert-title svg {
+    fill: currentColor;
+}
+
+.markdown-alert-caution {
+    border-left-color: #c93c37;
+}
+
+.markdown-alert-caution .markdown-alert-title {
+    color: #c93c37;
+}
+
+.markdown-alert-important {
+    border-left-color: #986ee2;
+}
+
+.markdown-alert-important .markdown-alert-title {
+    color: #986ee2;
+}
+
+.markdown-alert-warning {
+    border-left-color: #c69026;
+}
+
+.markdown-alert-warning .markdown-alert-title {
+    color: #c69026;
+}
+
+.markdown-alert-tip {
+    border-left-color: #57ab5a;
+}
+
+.markdown-alert-tip .markdown-alert-title {
+    color: #57ab5a;
+}
+
+.markdown-alert-note {
+    border-left-color: #478be6;
+}
+
+.markdown-alert-note .markdown-alert-title {
+    color: #478be6;
+}
